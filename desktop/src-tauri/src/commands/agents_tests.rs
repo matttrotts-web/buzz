@@ -431,6 +431,7 @@ fn deploy_payload_carries_the_full_behavioral_quad() {
 
     let payload = deploy_payload_json(
         &record,
+        "owner1234".to_string(),
         "wss://relay.example".to_string(),
         Some("gpt-x".to_string()),
         Some("openai".to_string()),
@@ -444,4 +445,6 @@ fn deploy_payload_carries_the_full_behavioral_quad() {
     assert_eq!(payload["model"], "gpt-x");
     assert_eq!(payload["provider"], "openai");
     assert_eq!(payload["relay_url"], "wss://relay.example");
+    assert_eq!(payload["pubkey"], "abcd1234");
+    assert_eq!(payload["owner_pubkey"], "owner1234");
 }

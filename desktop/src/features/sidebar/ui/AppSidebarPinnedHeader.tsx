@@ -1,4 +1,4 @@
-import { Activity, Bot, FolderGit2, Inbox, Zap } from "lucide-react";
+import { Activity, Bot, FolderGit2, Inbox, Radar, Zap } from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { FeatureGate } from "@/shared/features";
@@ -17,6 +17,7 @@ type SidebarSelectedView =
   | "channel"
   | "messages"
   | "agents"
+  | "mission-control"
   | "workflows"
   | "pulse"
   | "projects";
@@ -39,6 +40,7 @@ type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
   onSelectAgents: () => void;
   onSelectHome: () => void;
+  onSelectMissionControl: () => void;
   onSelectProjects: () => void;
   onSelectPulse: () => void;
   onSelectWorkflows: () => void;
@@ -84,6 +86,7 @@ export function AppSidebarPrimaryMenu({
   homeBadgeCount,
   onSelectAgents,
   onSelectHome,
+  onSelectMissionControl,
   onSelectProjects,
   onSelectPulse,
   onSelectWorkflows,
@@ -96,6 +99,18 @@ export function AppSidebarPrimaryMenu({
       data-testid="sidebar-primary-menu"
     >
       <SidebarMenu className="pb-2">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            data-testid="open-mission-control-view"
+            isActive={selectedView === "mission-control"}
+            onClick={onSelectMissionControl}
+            tooltip="Mission Control"
+            type="button"
+          >
+            <Radar className="h-4 w-4" />
+            <SidebarMenuLabel>Mission Control</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={selectedView === "home"}
