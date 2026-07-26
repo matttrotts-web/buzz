@@ -1,4 +1,6 @@
 export type WyzorAgentRole = "argus" | "riggs" | "kitt";
+export type MissionControlView = "overview" | "missions" | "decisions" | "data";
+export type MissionStage = "queued" | "active" | "review" | "completed";
 export type AgentConnectionState =
   | "connected"
   | "deployment-ready"
@@ -15,6 +17,39 @@ export type RelayAgentLike = {
   name: string;
   status: "online" | "away" | "offline";
 };
+
+export type MissionProjectLike = {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  projectChannelId: string | null;
+};
+
+export type AgentLaneState = (typeof WYZOR_AGENT_LANES)[number] & {
+  connection: AgentConnectionState;
+};
+
+export const MISSION_CONTROL_VIEWS: ReadonlyArray<{
+  id: MissionControlView;
+  label: string;
+}> = [
+  { id: "overview", label: "Overview" },
+  { id: "missions", label: "Missions" },
+  { id: "decisions", label: "Decisions" },
+  { id: "data", label: "Business data" },
+];
+
+export const MISSION_STAGES: ReadonlyArray<{
+  id: MissionStage;
+  label: string;
+  description: string;
+}> = [
+  { id: "queued", label: "Queued", description: "Planned and ready" },
+  { id: "active", label: "In flight", description: "Active execution" },
+  { id: "review", label: "At a gate", description: "Review, hold, or blocked" },
+  { id: "completed", label: "Complete", description: "Closed and delivered" },
+];
 
 export const WYZOR_AGENT_LANES = [
   {
@@ -43,6 +78,61 @@ export const WYZOR_AGENT_LANES = [
   },
 ] as const;
 
+const completedStatuses = new Set([
+  "closed",
+  "complete",
+  "completed",
+  "done",
+  "merged",
+  "released",
+  "shipped",
+]);
+const reviewStatuses = new Set([
+  "approval",
+  "blocked",
+  "gate",
+  "hold",
+  "pending_review",
+  "review",
+  "waiting_approval",
+]);
+const queuedStatuses = new Set([
+  "backlog",
+  "draft",
+  "new",
+  "planned",
+  "queued",
+  "ready",
+  "todo",
+]);
+
+export function missionStageForStatus(status: string): MissionStage {
+  const normalized = status
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[\s-]+/g, "_");
+  if (completedStatuses.has(normalized)) return "completed";
+  if (reviewStatuses.has(normalized)) return "review";
+  if (queuedStatuses.has(normalized)) return "queued";
+  return "active";
+}
+
+export function groupMissionsByStage(
+  projects: readonly MissionProjectLike[],
+): Record<MissionStage, MissionProjectLike[]> {
+  const grouped: Record<MissionStage, MissionProjectLike[]> = {
+    queued: [],
+    active: [],
+    review: [],
+    completed: [],
+  };
+
+  for (const project of projects) {
+    grouped[missionStageForStatus(project.status)].push(project);
+  }
+  return grouped;
+}
+
 export const DATA_SOURCE_CATALOG = [
   {
     id: "odoo",
@@ -51,6 +141,7 @@ export const DATA_SOURCE_CATALOG = [
     authority: "System of record",
     owner: "Connector service",
     direction: "Pull + webhook",
+    state: "adapter-required",
     description:
       "Accounts, contacts, opportunities, orders, invoices, and operational records.",
   },
@@ -61,6 +152,7 @@ export const DATA_SOURCE_CATALOG = [
     authority: "Document source",
     owner: "Connector service",
     direction: "Pull + webhook",
+    state: "adapter-required",
     description:
       "Specs, operating procedures, briefs, decisions, and project context.",
   },
@@ -71,6 +163,7 @@ export const DATA_SOURCE_CATALOG = [
     authority: "Source-specific",
     owner: "KITT",
     direction: "Normalize + publish",
+    state: "agent-stream",
     description:
       "KITT turns connected GTM activity into signed Ops Mesh projections.",
   },
@@ -81,6 +174,7 @@ export const DATA_SOURCE_CATALOG = [
     authority: "Service-specific",
     owner: "Argus",
     direction: "Observe + publish",
+    state: "agent-stream",
     description:
       "Argus publishes operational evidence without replacing the underlying service.",
   },
@@ -91,6 +185,7 @@ export const DATA_SOURCE_CATALOG = [
     authority: "Gate ledger",
     owner: "Riggs",
     direction: "Judge + publish",
+    state: "agent-stream",
     description:
       "Riggs signs verdicts; Matt signoff remains required wherever policy requires it.",
   },
