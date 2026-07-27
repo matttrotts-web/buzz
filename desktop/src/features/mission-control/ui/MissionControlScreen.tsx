@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import {
+  useAcpRuntimesQuery,
   useManagedAgentsQuery,
   useRelayAgentsQuery,
 } from "@/features/agents/hooks";
@@ -16,6 +17,7 @@ import { Tabs, TabsContent } from "@/shared/ui/tabs";
 
 import { MissionControlData } from "./MissionControlData";
 import { MissionControlDecisions } from "./MissionControlDecisions";
+import { MissionControlFleet } from "./MissionControlFleet";
 import { MissionControlHeader } from "./MissionControlHeader";
 import { MissionControlMissions } from "./MissionControlMissions";
 import { MissionControlOverview } from "./MissionControlOverview";
@@ -25,6 +27,7 @@ export function MissionControlScreen() {
     React.useState<MissionControlView>("overview");
   const managedAgentsQuery = useManagedAgentsQuery();
   const relayAgentsQuery = useRelayAgentsQuery();
+  const runtimesQuery = useAcpRuntimesQuery();
   const projectsQuery = useProjectsQuery();
   const channelsQuery = useChannelsQuery();
   const { goAgents, goChannel, goProject, goProjects, goWorkflows } =
@@ -44,6 +47,10 @@ export function MissionControlScreen() {
   );
   const projects = projectsQuery.data ?? [];
   const channels = channelsQuery.data ?? [];
+  const managedAgents = managedAgentsQuery.data ?? [];
+  const activeManagedAgentCount = managedAgents.filter(
+    (agent) => agent.status === "running" || agent.status === "deployed",
+  ).length;
   const riggsState =
     agentStates.find((agent) => agent.role === "riggs")?.connection ??
     "not-registered";
@@ -63,11 +70,23 @@ export function MissionControlScreen() {
           <TabsContent className="mt-0" value="overview">
             <MissionControlOverview
               agents={agentStates}
+              activeManagedAgentCount={activeManagedAgentCount}
               channels={channels}
+              managedAgentCount={managedAgents.length}
               onOpenMission={(projectId) => void goProject(projectId)}
               onShowData={() => setActiveView("data")}
+              onShowFleet={() => setActiveView("fleet")}
               onShowMissions={() => setActiveView("missions")}
               projects={projects}
+            />
+          </TabsContent>
+
+          <TabsContent className="mt-0" value="fleet">
+            <MissionControlFleet
+              agents={managedAgents}
+              onManageAgents={() => void goAgents()}
+              relayAgents={relayAgentsQuery.data ?? []}
+              runtimes={runtimesQuery.data ?? []}
             />
           </TabsContent>
 

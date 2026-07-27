@@ -21,21 +21,24 @@ import { MissionControlAgentGrid } from "./MissionControlAgentGrid";
 export function MissionControlOverview({
   agents,
   channels,
+  managedAgentCount,
+  activeManagedAgentCount,
   projects,
   onOpenMission,
   onShowData,
+  onShowFleet,
   onShowMissions,
 }: {
   agents: readonly AgentLaneState[];
   channels: readonly Channel[];
+  managedAgentCount: number;
+  activeManagedAgentCount: number;
   projects: readonly MissionProjectLike[];
   onOpenMission: (projectId: string) => void;
   onShowData: () => void;
+  onShowFleet: () => void;
   onShowMissions: () => void;
 }) {
-  const connected = agents.filter(
-    (agent) => agent.connection === "connected",
-  ).length;
   const activeMissions = projects.filter(
     (project) => missionStageForStatus(project.status) === "active",
   );
@@ -47,10 +50,11 @@ export function MissionControlOverview({
     <div className="space-y-6">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          detail="Argus, Riggs, and KITT"
+          detail="Open the fleet for runtime, provider, and model"
           icon={<RadioTower className="h-4 w-4" />}
-          label="Hermes online"
-          value={`${connected} / ${agents.length}`}
+          label="Agents active"
+          onClick={onShowFleet}
+          value={`${activeManagedAgentCount} / ${managedAgentCount}`}
         />
         <MetricCard
           detail="Projects executing now"
@@ -151,15 +155,17 @@ function MetricCard({
   detail,
   icon,
   label,
+  onClick,
   value,
 }: {
   detail: string;
   icon: React.ReactNode;
   label: string;
+  onClick?: () => void;
   value: string;
 }) {
-  return (
-    <Card className="px-5 py-4">
+  const content = (
+    <>
       <div className="flex items-center justify-between text-muted-foreground">
         <p className="text-xs font-semibold uppercase tracking-wider">
           {label}
@@ -168,8 +174,22 @@ function MetricCard({
       </div>
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-    </Card>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        className="rounded-xl border border-border bg-card px-5 py-4 text-left text-card-foreground shadow-xs transition-colors hover:bg-muted/40"
+        onClick={onClick}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <Card className="px-5 py-4">{content}</Card>;
 }
 
 function SectionHeading({

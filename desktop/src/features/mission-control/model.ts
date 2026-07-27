@@ -1,5 +1,10 @@
 export type WyzorAgentRole = "argus" | "riggs" | "kitt";
-export type MissionControlView = "overview" | "missions" | "decisions" | "data";
+export type MissionControlView =
+  | "overview"
+  | "fleet"
+  | "missions"
+  | "decisions"
+  | "data";
 export type MissionStage = "queued" | "active" | "review" | "completed";
 export type AgentConnectionState =
   | "connected"
@@ -35,6 +40,7 @@ export const MISSION_CONTROL_VIEWS: ReadonlyArray<{
   label: string;
 }> = [
   { id: "overview", label: "Overview" },
+  { id: "fleet", label: "Agent fleet" },
   { id: "missions", label: "Missions" },
   { id: "decisions", label: "Decisions" },
   { id: "data", label: "Business data" },
