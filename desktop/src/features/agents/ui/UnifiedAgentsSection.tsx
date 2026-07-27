@@ -8,9 +8,13 @@ import {
 
 import { resolveAgentCardModelLabel } from "@/features/agents/lib/agentCardModelLabel";
 import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastError";
-import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
+import { isManagedAgentLive } from "@/features/agents/lib/managedAgentControlActions";
 import { useUserProfileQuery } from "@/features/profile/hooks";
-import type { AgentPersona, ManagedAgent } from "@/shared/api/types";
+import type {
+  AgentPersona,
+  ManagedAgent,
+  PresenceLookup,
+} from "@/shared/api/types";
 import type { ProfilePanelOpenOptions } from "@/shared/context/ProfilePanelContext";
 import { useFeedbackToasts } from "@/shared/hooks/useToastEffect";
 import { useFileImportZone } from "@/shared/hooks/useFileImportZone";
@@ -27,12 +31,14 @@ import { AgentRuntimeAvatarControl } from "./AgentRuntimeAvatarControl";
 import { CreateIdentityCard } from "./CreateIdentityCard";
 import { PersonaActionsMenu } from "./PersonaActionsMenu";
 import { buildUnifiedGroups, pickProfileAgent } from "./unifiedAgentGroups";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 type UnifiedAgentsSectionProps = {
   defaultModel: string;
   actionErrorMessage: string | null;
   actionNoticeMessage: string | null;
   agents: ManagedAgent[];
+  presenceLookup: PresenceLookup;
   agentsError: Error | null;
   isActionPending: boolean;
   isAgentsLoading: boolean;
@@ -76,6 +82,7 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
     actionNoticeMessage,
     defaultModel,
     agents,
+    presenceLookup,
     agentsError,
     isActionPending,
     isAgentsLoading,
@@ -155,7 +162,10 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
         <div className="space-y-3" data-testid="unified-agents-groups">
           <div className={AGENT_CARD_GRID_CLASS}>
             {groups.map((group) => {
-              const profileAgent = pickProfileAgent(group.agents);
+              const profileAgent = pickProfileAgent(
+                group.agents,
+                presenceLookup,
+              );
               return (
                 <AgentPersonaCard
                   actions={(effectiveAvatarUrl, isEffectiveAvatarLoading) => (
@@ -179,6 +189,7 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
                   defaultModel={defaultModel}
                   key={group.persona.id}
                   persona={group.persona}
+                  presenceLookup={presenceLookup}
                   startingAgentPubkey={startingAgentPubkey}
                   startingPersonaIds={startingPersonaIds}
                   onOpenAgentProfile={onOpenAgentProfile}
@@ -203,6 +214,7 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
               defaultModel={defaultModel}
               groupKey="__unknown__"
               label="Unknown agents"
+              presenceLookup={presenceLookup}
               startingAgentPubkey={startingAgentPubkey}
               onToggle={toggle}
               onOpenAgentProfile={onOpenAgentProfile}
@@ -216,6 +228,7 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
               defaultModel={defaultModel}
               groupKey="__ungrouped__"
               label="Custom agents"
+              presenceLookup={presenceLookup}
               startingAgentPubkey={startingAgentPubkey}
               onToggle={toggle}
               onOpenAgentProfile={onOpenAgentProfile}
@@ -248,6 +261,7 @@ function AgentPersonaCard({
   agent,
   defaultModel,
   persona,
+  presenceLookup,
   startingAgentPubkey,
   startingPersonaIds,
   onOpenAgentProfile,
@@ -262,6 +276,7 @@ function AgentPersonaCard({
   agent: ManagedAgent | undefined;
   defaultModel: string;
   persona: AgentPersona;
+  presenceLookup: PresenceLookup;
   startingAgentPubkey: string | null;
   startingPersonaIds: ReadonlySet<string>;
   onOpenAgentProfile: (
@@ -278,7 +293,9 @@ function AgentPersonaCard({
     personaModel: persona.model,
     defaultModel,
   });
-  const isActive = agent ? isManagedAgentActive(agent) : false;
+  const isActive = agent
+    ? isManagedAgentLive(agent, presenceLookup[normalizePubkey(agent.pubkey)])
+    : false;
   const profileQuery = useUserProfileQuery(agent?.pubkey);
   const avatarUrl = agent
     ? firstAvatarUrl(persona.avatarUrl, profileQuery.data?.avatarUrl)
@@ -348,6 +365,8 @@ function AgentPersonaCard({
             <RefreshCw className="h-3 w-3" />
             Restart required
           </Badge>
+        ) : agent?.backend.type === "provider" && !isActive ? (
+          <Badge variant="outline">Waiting for bridge</Badge>
         ) : null
       }
     />
@@ -357,12 +376,14 @@ function AgentPersonaCard({
 function StandaloneAgentCard({
   agent,
   defaultModel,
+  presenceLookup,
   startingAgentPubkey,
   onOpenAgentProfile,
   onStartAgent,
 }: {
   agent: ManagedAgent;
   defaultModel: string;
+  presenceLookup: PresenceLookup;
   startingAgentPubkey: string | null;
   onOpenAgentProfile: (
     pubkey: string,
@@ -376,7 +397,10 @@ function StandaloneAgentCard({
     agent.lastError,
     agent.lastErrorCode,
   )?.copy;
-  const isActive = isManagedAgentActive(agent);
+  const isActive = isManagedAgentLive(
+    agent,
+    presenceLookup[normalizePubkey(agent.pubkey)],
+  );
   const opensRuntimeTab = Boolean(friendlyError && !isActive);
 
   return (
@@ -423,6 +447,8 @@ function StandaloneAgentCard({
             <RefreshCw className="h-3 w-3" />
             Restart required
           </Badge>
+        ) : agent.backend.type === "provider" && !isActive ? (
+          <Badge variant="outline">Waiting for bridge</Badge>
         ) : null
       }
     />
@@ -502,6 +528,7 @@ function CollapsibleAgentGroup({
   agents,
   collapsed,
   defaultModel,
+  presenceLookup,
   startingAgentPubkey,
   onToggle,
   onOpenAgentProfile,
@@ -512,6 +539,7 @@ function CollapsibleAgentGroup({
   agents: ManagedAgent[];
   collapsed: ReadonlySet<string>;
   defaultModel: string;
+  presenceLookup: PresenceLookup;
   startingAgentPubkey: string | null;
   onToggle: (key: string) => void;
   onOpenAgentProfile: (
@@ -543,6 +571,7 @@ function CollapsibleAgentGroup({
               agent={agent}
               defaultModel={defaultModel}
               key={agent.pubkey}
+              presenceLookup={presenceLookup}
               startingAgentPubkey={startingAgentPubkey}
               onOpenAgentProfile={onOpenAgentProfile}
               onStartAgent={onStartAgent}

@@ -3,6 +3,7 @@ import type {
   Channel,
   ManagedAgent,
   PresenceLookup,
+  PresenceStatus,
   RelayAgent,
 } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -33,6 +34,20 @@ export type ManagedAgentActionResult = {
 
 export function isManagedAgentActive(agent: Pick<ManagedAgent, "status">) {
   return agent.status === "running" || agent.status === "deployed";
+}
+
+/**
+ * Runtime truth for UI presence. A provider deployment only proves that its
+ * control-plane bundle exists; it is live only after the relay observes it.
+ */
+export function isManagedAgentLive(
+  agent: Pick<ManagedAgent, "backend" | "status">,
+  presenceStatus?: PresenceStatus,
+) {
+  if (agent.backend.type === "provider") {
+    return presenceStatus === "online" || presenceStatus === "away";
+  }
+  return agent.status === "running";
 }
 
 export function getManagedAgentPrimaryActionLabel(agent: ManagedAgent) {

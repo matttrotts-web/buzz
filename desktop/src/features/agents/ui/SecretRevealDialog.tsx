@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { CopyButton } from "./CopyButton";
+import { managedAgentCreationStatus } from "../lib/managedAgentCreationCopy";
 
 export function SecretRevealDialog({
   attachmentFailure,
@@ -81,12 +82,7 @@ export function SecretRevealDialog({
                   </div>
                 ) : (
                   <p className="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-                    {created.agent.name} is ready
-                    {created.agent.status === "running"
-                      ? " and running."
-                      : created.agent.status === "deployed"
-                        ? " and deployed."
-                        : "."}
+                    {managedAgentCreationStatus(created.agent)}
                   </p>
                 )}
               </>

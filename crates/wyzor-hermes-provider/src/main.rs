@@ -22,6 +22,7 @@ struct ProviderRequest {
 
 #[derive(Debug, Default, Deserialize)]
 struct ProviderConfig {
+    #[allow(dead_code)]
     role: Option<String>,
     hermes_command: Option<String>,
     hermes_args: Option<String>,
@@ -79,15 +80,7 @@ fn info_response() -> Value {
         "description": "Builds a secure buzz-acp deployment bundle for Argus, Riggs, or KITT.",
         "config_schema": {
             "type": "object",
-            "required": ["role"],
             "properties": {
-                "role": {
-                    "type": "string",
-                    "title": "Wyzor role",
-                    "description": "The stable Wyzor identity this deployment serves.",
-                    "enum": ["argus", "riggs", "kitt"],
-                    "default": "argus"
-                },
                 "hermes_command": {
                     "type": "string",
                     "title": "Hermes ACP command",
@@ -124,8 +117,8 @@ fn info_response() -> Value {
 }
 
 fn deploy(request: ProviderRequest) -> Result<Value, String> {
-    let role = normalize_role(request.provider_config.role.as_deref())?;
     let payload = parse_agent(&request.agent)?;
+    let role = deployment_role(&payload.name, request.provider_config.role.as_deref())?;
     let deployment_root = deployment_root(request.provider_config.deployment_root.as_deref())?;
     let bundle_name = format!("{role}-{}", prefix(&payload.pubkey, 12));
     let bundle_dir = deployment_root.join(bundle_name);
@@ -274,6 +267,16 @@ fn normalize_role(role: Option<&str>) -> Result<&'static str, String> {
         Some("kitt") => Ok("kitt"),
         _ => Err("role must be one of: argus, riggs, kitt".to_string()),
     }
+}
+
+fn deployment_role(
+    agent_name: &str,
+    _configured_role: Option<&str>,
+) -> Result<&'static str, String> {
+    // The record name is the durable Wyzor identity. The separate provider
+    // field was a second source of truth and could silently retain "argus"
+    // while the user created Riggs or KITT.
+    normalize_role(Some(agent_name))
 }
 
 fn deployment_root(configured: Option<&str>) -> Result<PathBuf, String> {
@@ -488,10 +491,27 @@ mod tests {
 
     #[test]
     fn info_exposes_three_stable_roles() {
-        let info = info_response();
+        for role in ["Argus", "riggs", "KITT"] {
+            assert_eq!(
+                normalize_role(Some(role)).unwrap(),
+                role.to_ascii_lowercase()
+            );
+        }
+        assert!(normalize_role(Some("Hermes Ops")).is_err());
+        assert!(info_response()["config_schema"]["properties"]["role"].is_null());
+    }
+
+    #[test]
+    fn deployment_role_follows_the_named_wyzor_identity() {
         assert_eq!(
-            info["config_schema"]["properties"]["role"]["enum"],
-            json!(["argus", "riggs", "kitt"])
+            deployment_role("Riggs", Some("argus")).unwrap(),
+            "riggs",
+            "a stale UI default must not wire Riggs to Argus"
+        );
+        assert_eq!(
+            deployment_role("KITT", None).unwrap(),
+            "kitt",
+            "the agent name is sufficient to select the existing runtime"
         );
     }
 

@@ -29,7 +29,8 @@ import { usePersonaActions } from "./usePersonaActions";
 import { useTeamActions } from "./useTeamActions";
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { useBakedBuildEnvQuery } from "@/features/agents/hooks";
-import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
+import { isManagedAgentLive } from "@/features/agents/lib/managedAgentControlActions";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import { Button } from "@/shared/ui/button";
 import { PageHeader } from "@/shared/ui/PageHeader";
@@ -71,7 +72,10 @@ export function AgentsView() {
     teamActions.updateTeamMutation.isPending ||
     teamActions.deleteTeamMutation.isPending;
   const runningAgentCount = agents.managedAgents.filter((agent) =>
-    isManagedAgentActive(agent),
+    isManagedAgentLive(
+      agent,
+      agents.managedPresenceQuery.data?.[normalizePubkey(agent.pubkey)],
+    ),
   ).length;
   const hasSavedAgentDefaults = Boolean(
     globalConfig.preferred_runtime?.trim() ||
@@ -155,6 +159,7 @@ export function AgentsView() {
               actionErrorMessage={agents.actionErrorMessage}
               actionNoticeMessage={agents.actionNoticeMessage}
               agents={agents.managedAgents}
+              presenceLookup={agents.managedPresenceQuery.data ?? {}}
               agentsError={
                 agents.managedAgentsQuery.error instanceof Error
                   ? agents.managedAgentsQuery.error
