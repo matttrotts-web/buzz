@@ -85,7 +85,7 @@ fn info_response() -> Value {
                     "type": "string",
                     "title": "Hermes ACP command",
                     "description": "Command installed by the bot build. The host installer verifies it before starting.",
-                    "default": "/usr/local/bin/hermes-acp"
+                    "default": "/opt/wyzor-ops-mesh/hermes"
                 },
                 "hermes_args": {
                     "type": "string",
@@ -124,11 +124,13 @@ fn deploy(request: ProviderRequest) -> Result<Value, String> {
     let bundle_dir = deployment_root.join(bundle_name);
     ensure_safe_directory(&deployment_root, &bundle_dir)?;
 
+    let runtime = runtime_layout(role);
     let hermes_home = optional_nonempty(request.provider_config.hermes_home.as_deref())
-        .unwrap_or_else(|| format!("/home/{role}/.hermes"));
+        .unwrap_or_else(|| runtime.hermes_home.to_string());
     let hermes_command = optional_nonempty(request.provider_config.hermes_command.as_deref())
-        .unwrap_or_else(|| "/usr/local/bin/hermes-acp".to_string());
-    let hermes_args = request.provider_config.hermes_args.unwrap_or_default();
+        .unwrap_or_else(|| "/opt/wyzor-ops-mesh/hermes".to_string());
+    let hermes_args = optional_nonempty(request.provider_config.hermes_args.as_deref())
+        .unwrap_or_else(|| runtime.hermes_args.to_string());
     let harness_path = optional_nonempty(request.provider_config.harness_path.as_deref())
         .unwrap_or_else(|| "/opt/wyzor-ops-mesh/buzz-acp".to_string());
 
@@ -140,7 +142,7 @@ fn deploy(request: ProviderRequest) -> Result<Value, String> {
     validate_remote_path("harness path", &harness_path)?;
 
     let env_file = render_env(role, &payload, &hermes_command, &hermes_args);
-    let service_file = render_service(role, &hermes_home, &harness_path);
+    let service_file = render_service(role, runtime.user, &hermes_home, &harness_path);
     let installer = render_installer(role, &hermes_command, &harness_path);
     let manifest = render_manifest(
         &request.request_id,
@@ -279,6 +281,32 @@ fn deployment_role(
     normalize_role(Some(agent_name))
 }
 
+struct RuntimeLayout {
+    user: &'static str,
+    hermes_home: &'static str,
+    hermes_args: &'static str,
+}
+
+fn runtime_layout(role: &str) -> RuntimeLayout {
+    match role {
+        "kitt" => RuntimeLayout {
+            user: "hermes",
+            hermes_home: "/home/hermes/.hermes",
+            hermes_args: "--profile,kitt,acp",
+        },
+        "riggs" => RuntimeLayout {
+            user: "riggs",
+            hermes_home: "/home/riggs/.hermes",
+            hermes_args: "",
+        },
+        _ => RuntimeLayout {
+            user: "argus",
+            hermes_home: "/home/argus/.hermes",
+            hermes_args: "",
+        },
+    }
+}
+
 fn deployment_root(configured: Option<&str>) -> Result<PathBuf, String> {
     if let Some(path) = optional_nonempty(configured) {
         return absolute_path(&path);
@@ -385,9 +413,9 @@ fn render_env(
     lines.join("\n")
 }
 
-fn render_service(role: &str, hermes_home: &str, harness_path: &str) -> String {
+fn render_service(role: &str, user: &str, hermes_home: &str, harness_path: &str) -> String {
     format!(
-        "[Unit]\nDescription=Wyzor Ops Mesh bridge for {role}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser={role}\nWorkingDirectory={hermes_home}\nEnvironmentFile=/etc/wyzor-ops-mesh/{role}.env\nExecStart={harness_path}\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths={hermes_home}\n\n[Install]\nWantedBy=multi-user.target\n"
+        "[Unit]\nDescription=Wyzor Ops Mesh bridge for {role}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser={user}\nWorkingDirectory={hermes_home}\nEnvironment=HERMES_HOME={hermes_home}\nEnvironmentFile=/etc/wyzor-ops-mesh/{role}.env\nExecStart={harness_path}\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths={hermes_home}\n\n[Install]\nWantedBy=multi-user.target\n"
     )
 }
 
@@ -513,6 +541,33 @@ mod tests {
             "kitt",
             "the agent name is sufficient to select the existing runtime"
         );
+    }
+
+    #[test]
+    fn runtime_layout_matches_the_existing_named_agent_accounts() {
+        let argus = runtime_layout("argus");
+        assert_eq!(argus.user, "argus");
+        assert_eq!(argus.hermes_home, "/home/argus/.hermes");
+        assert_eq!(argus.hermes_args, "");
+
+        let riggs = runtime_layout("riggs");
+        assert_eq!(riggs.user, "riggs");
+        assert_eq!(riggs.hermes_home, "/home/riggs/.hermes");
+        assert_eq!(riggs.hermes_args, "");
+
+        let kitt = runtime_layout("kitt");
+        assert_eq!(kitt.user, "hermes");
+        assert_eq!(kitt.hermes_home, "/home/hermes/.hermes");
+        assert_eq!(kitt.hermes_args, "--profile,kitt,acp");
+
+        let service = render_service(
+            "kitt",
+            kitt.user,
+            kitt.hermes_home,
+            "/opt/wyzor-ops-mesh/buzz-acp",
+        );
+        assert!(service.contains("User=hermes"));
+        assert!(service.contains("Environment=HERMES_HOME=/home/hermes/.hermes"));
     }
 
     #[test]
