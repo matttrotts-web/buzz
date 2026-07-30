@@ -291,10 +291,19 @@ fn parse_nostr_bind_deep_link(url: &Url) -> Result<NostrBindDeepLinkPayload, Str
     })
 }
 
-/// Handle an incoming `buzz://` deep link URL.
+fn is_supported_deep_link_scheme(scheme: &str) -> bool {
+    scheme == "wyzor-mesh" || scheme == "buzz"
+}
+
+/// Handle an incoming `wyzor-mesh://` deep link URL.
 ///
 /// Currently supports:
-/// - `buzz://connect?relay=<ws(s)://...>` — emits `deep-link-connect` to the frontend
+/// - `wyzor-mesh://connect?relay=<ws(s)://...>` — emits `deep-link-connect`
+///   to the frontend.
+///
+/// Legacy `buzz://` input remains parseable inside the app, but Wyzor Ops Mesh
+/// does not register that OS scheme and therefore cannot take it from official
+/// Buzz.
 pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
     let url = match Url::parse(url_str) {
         Ok(u) => u,
@@ -304,7 +313,7 @@ pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
         }
     };
 
-    if url.scheme() != "buzz" {
+    if !is_supported_deep_link_scheme(url.scheme()) {
         eprintln!("buzz-desktop: ignoring unsupported deep link scheme: {url_str}");
         return;
     }
@@ -389,9 +398,17 @@ mod tests {
     use url::Url;
 
     use super::{
-        parse_add_community_deep_link, parse_join_deep_link, parse_message_deep_link,
-        parse_nostr_bind_deep_link, PendingCommunityDeepLink, PendingCommunityDeepLinks,
+        is_supported_deep_link_scheme, parse_add_community_deep_link, parse_join_deep_link,
+        parse_message_deep_link, parse_nostr_bind_deep_link, PendingCommunityDeepLink,
+        PendingCommunityDeepLinks,
     };
+
+    #[test]
+    fn wyzor_scheme_is_primary_without_rejecting_legacy_links() {
+        assert!(is_supported_deep_link_scheme("wyzor-mesh"));
+        assert!(is_supported_deep_link_scheme("buzz"));
+        assert!(!is_supported_deep_link_scheme("buzz-hermes"));
+    }
 
     fn pending(id: &str, relay_url: &str, code: Option<&str>) -> PendingCommunityDeepLink {
         PendingCommunityDeepLink {

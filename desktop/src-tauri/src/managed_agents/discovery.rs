@@ -1595,10 +1595,10 @@ const PRESET_HARNESSES: &[PresetHarness] = &[
     PresetHarness {
         id: "hermes",
         label: "Hermes Agent",
-        command: "hermes-acp",
-        args: &[],
+        command: "hermes",
+        args: &["acp"],
         install_instructions_url: "https://hermes-agent.nousresearch.com",
-        install_hint: "Buzz talks to Hermes Agent through its hermes-acp command.",
+        install_hint: "Wyzor Ops Mesh talks to Hermes Agent through `hermes acp`.",
         underlying_cli: None,
     },
     PresetHarness {
