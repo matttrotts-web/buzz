@@ -8,10 +8,13 @@ import {
 } from "@/features/agents/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import {
+  buildExecutiveUpdates,
   connectionStateForRole,
   type MissionControlView,
+  trustedExecutiveIdentities,
   WYZOR_AGENT_LANES,
 } from "@/features/mission-control/model";
+import { useHomeFeedQuery } from "@/features/home/hooks";
 import { useProjectsQuery } from "@/features/projects/hooks";
 import { Tabs, TabsContent } from "@/shared/ui/tabs";
 
@@ -30,6 +33,7 @@ export function MissionControlScreen() {
   const runtimesQuery = useAcpRuntimesQuery();
   const projectsQuery = useProjectsQuery();
   const channelsQuery = useChannelsQuery();
+  const homeFeedQuery = useHomeFeedQuery();
   const { goAgents, goChannel, goProject, goProjects, goWorkflows } =
     useAppNavigation();
 
@@ -48,6 +52,22 @@ export function MissionControlScreen() {
   const projects = projectsQuery.data ?? [];
   const channels = channelsQuery.data ?? [];
   const managedAgents = managedAgentsQuery.data ?? [];
+  const relayAgents = relayAgentsQuery.data ?? [];
+  const executiveUpdates = React.useMemo(() => {
+    const feed = homeFeedQuery.data?.feed;
+    const items = feed
+      ? [
+          ...feed.mentions,
+          ...feed.needsAction,
+          ...feed.activity,
+          ...feed.agentActivity,
+        ]
+      : [];
+    return buildExecutiveUpdates(
+      items,
+      trustedExecutiveIdentities(managedAgents, relayAgents),
+    );
+  }, [homeFeedQuery.data, managedAgents, relayAgents]);
   const activeManagedAgentCount = managedAgents.filter(
     (agent) => agent.status === "running" || agent.status === "deployed",
   ).length;
@@ -72,7 +92,10 @@ export function MissionControlScreen() {
               agents={agentStates}
               activeManagedAgentCount={activeManagedAgentCount}
               channels={channels}
+              executiveUpdates={executiveUpdates}
+              isExecutiveFeedLoading={homeFeedQuery.isLoading}
               managedAgentCount={managedAgents.length}
+              onOpenChannel={(channelId) => void goChannel(channelId)}
               onOpenMission={(projectId) => void goProject(projectId)}
               onShowData={() => setActiveView("data")}
               onShowFleet={() => setActiveView("fleet")}

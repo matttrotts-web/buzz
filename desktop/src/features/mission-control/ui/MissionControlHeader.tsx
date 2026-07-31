@@ -24,11 +24,11 @@ export function MissionControlHeader({
             </div>
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">
-                Autopilot Mission Control
+                Executive Mission Control
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                A live command layer across missions, Hermes workers, business
-                systems, and signed gate decisions.
+                Signed GTM, Ops, and Riggs updates—plus the decisions, missions,
+                and business signals that need Matt&apos;s attention.
               </p>
             </div>
           </div>

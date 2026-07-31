@@ -1,4 +1,8 @@
 export type WyzorAgentRole = "argus" | "riggs" | "kitt";
+export type ExecutiveLane = "gtm" | "ops" | "riggs";
+export type ExecutiveUpdateKind = "standup" | "news" | "decision";
+export type StandupPeriod = "morning" | "afternoon" | "evening";
+export type ExecutiveHealth = "on-track" | "at-risk" | "blocked";
 export type MissionControlView =
   | "overview"
   | "fleet"
@@ -12,6 +16,7 @@ export type AgentConnectionState =
   | "not-registered";
 
 export type AgentLike = {
+  pubkey?: string;
   name: string;
   personaId?: string | null;
   status: "running" | "stopped" | "deployed" | "not_deployed";
@@ -19,8 +24,41 @@ export type AgentLike = {
 };
 
 export type RelayAgentLike = {
+  pubkey?: string;
   name: string;
   status: "online" | "away" | "offline";
+};
+
+export type ExecutiveFeedItemLike = {
+  id: string;
+  pubkey: string;
+  content: string;
+  createdAt: number;
+  channelId: string | null;
+  channelName: string;
+};
+
+export type TrustedExecutiveIdentity = {
+  pubkey: string;
+  role: WyzorAgentRole;
+};
+
+export type ExecutiveUpdate = {
+  id: string;
+  lane: ExecutiveLane;
+  role: WyzorAgentRole;
+  kind: ExecutiveUpdateKind;
+  period: StandupPeriod | null;
+  health: ExecutiveHealth;
+  title: string;
+  summary: string;
+  highlights: string[];
+  risks: string[];
+  asks: string[];
+  createdAt: number;
+  channelId: string | null;
+  channelName: string;
+  pubkey: string;
 };
 
 export type MissionProjectLike = {
@@ -83,6 +121,31 @@ export const WYZOR_AGENT_LANES = [
       "Projection — Odoo/CRM remains authoritative for records and money",
   },
 ] as const;
+
+export const EXECUTIVE_UPDATE_SENTINEL = "WYZOR_EXEC_UPDATE_V1";
+
+const ROLE_TO_EXECUTIVE_LANE: Record<WyzorAgentRole, ExecutiveLane> = {
+  argus: "ops",
+  kitt: "gtm",
+  riggs: "riggs",
+};
+
+const executiveLanes = new Set<ExecutiveLane>(["gtm", "ops", "riggs"]);
+const executiveKinds = new Set<ExecutiveUpdateKind>([
+  "standup",
+  "news",
+  "decision",
+]);
+const standupPeriods = new Set<StandupPeriod>([
+  "morning",
+  "afternoon",
+  "evening",
+]);
+const executiveHealth = new Set<ExecutiveHealth>([
+  "on-track",
+  "at-risk",
+  "blocked",
+]);
 
 const completedStatuses = new Set([
   "closed",
@@ -199,6 +262,170 @@ export const DATA_SOURCE_CATALOG = [
 
 function matchesRole(name: string | null | undefined, role: WyzorAgentRole) {
   return name?.trim().toLowerCase() === role;
+}
+
+function roleForName(
+  name: string | null | undefined,
+  personaId?: string | null,
+): WyzorAgentRole | null {
+  return (
+    WYZOR_AGENT_LANES.find(
+      (agent) =>
+        matchesRole(name, agent.role) || matchesRole(personaId, agent.role),
+    )?.role ?? null
+  );
+}
+
+function normalizePubkey(pubkey: string | null | undefined) {
+  return pubkey?.trim().toLowerCase() ?? "";
+}
+
+export function trustedExecutiveIdentities(
+  managedAgents: readonly AgentLike[],
+  relayAgents: readonly RelayAgentLike[],
+): TrustedExecutiveIdentity[] {
+  const identities = new Map<string, TrustedExecutiveIdentity>();
+
+  for (const agent of [...relayAgents, ...managedAgents]) {
+    const personaId = "personaId" in agent ? agent.personaId : null;
+    const role = roleForName(agent.name, personaId);
+    const pubkey = normalizePubkey(agent.pubkey);
+    if (role && pubkey) {
+      identities.set(pubkey, { pubkey, role });
+    }
+  }
+
+  return [...identities.values()];
+}
+
+type ExecutiveUpdatePayload = {
+  schema_version: number;
+  lane: ExecutiveLane;
+  type: ExecutiveUpdateKind;
+  period?: StandupPeriod;
+  health?: ExecutiveHealth;
+  title: string;
+  summary: string;
+  highlights?: string[];
+  risks?: string[];
+  asks?: string[];
+};
+
+function exactString(
+  value: unknown,
+  options: { max: number; required?: boolean },
+) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (options.required && normalized.length === 0) return null;
+  return normalized.slice(0, options.max);
+}
+
+function stringList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => exactString(item, { max: 240 }))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 8);
+}
+
+function parseExecutivePayload(content: string): ExecutiveUpdatePayload | null {
+  const markerIndex = content.indexOf(EXECUTIVE_UPDATE_SENTINEL);
+  if (markerIndex < 0) return null;
+
+  const encoded = content
+    .slice(markerIndex + EXECUTIVE_UPDATE_SENTINEL.length)
+    .trim();
+  if (!encoded.startsWith("{")) return null;
+
+  let raw: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(encoded);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    raw = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  if (raw.schema_version !== 1) return null;
+  if (!executiveLanes.has(raw.lane as ExecutiveLane)) return null;
+  if (!executiveKinds.has(raw.type as ExecutiveUpdateKind)) return null;
+
+  const kind = raw.type as ExecutiveUpdateKind;
+  const period = raw.period as StandupPeriod | undefined;
+  if (kind === "standup" && !standupPeriods.has(period as StandupPeriod)) {
+    return null;
+  }
+  if (period !== undefined && !standupPeriods.has(period)) return null;
+
+  const title = exactString(raw.title, { max: 120, required: true });
+  const summary = exactString(raw.summary, { max: 1_200, required: true });
+  if (!title || !summary) return null;
+
+  const health = executiveHealth.has(raw.health as ExecutiveHealth)
+    ? (raw.health as ExecutiveHealth)
+    : "on-track";
+
+  return {
+    schema_version: 1,
+    lane: raw.lane as ExecutiveLane,
+    type: kind,
+    period,
+    health,
+    title,
+    summary,
+    highlights: stringList(raw.highlights),
+    risks: stringList(raw.risks),
+    asks: stringList(raw.asks),
+  };
+}
+
+export function buildExecutiveUpdates(
+  feedItems: readonly ExecutiveFeedItemLike[],
+  trustedIdentities: readonly TrustedExecutiveIdentity[],
+): ExecutiveUpdate[] {
+  const identityByPubkey = new Map(
+    trustedIdentities.map((identity) => [
+      normalizePubkey(identity.pubkey),
+      identity,
+    ]),
+  );
+  const seen = new Set<string>();
+  const updates: ExecutiveUpdate[] = [];
+
+  for (const item of feedItems) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+
+    const identity = identityByPubkey.get(normalizePubkey(item.pubkey));
+    if (!identity) continue;
+
+    const payload = parseExecutivePayload(item.content);
+    if (!payload) continue;
+    if (ROLE_TO_EXECUTIVE_LANE[identity.role] !== payload.lane) continue;
+
+    updates.push({
+      id: item.id,
+      lane: payload.lane,
+      role: identity.role,
+      kind: payload.type,
+      period: payload.period ?? null,
+      health: payload.health ?? "on-track",
+      title: payload.title,
+      summary: payload.summary,
+      highlights: payload.highlights ?? [],
+      risks: payload.risks ?? [],
+      asks: payload.asks ?? [],
+      createdAt: item.createdAt,
+      channelId: item.channelId,
+      channelName: item.channelName,
+      pubkey: normalizePubkey(item.pubkey),
+    });
+  }
+
+  return updates.sort((left, right) => right.createdAt - left.createdAt);
 }
 
 export function connectionStateForRole(

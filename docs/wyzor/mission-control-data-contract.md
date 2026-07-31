@@ -40,6 +40,9 @@ Agents publish only within their lane:
 - Riggs: `gate` decisions.
 - KITT: `gtm` and `sales` projections.
 
+Executive summaries, standups, news, and decisions use the stricter signed
+envelope in [executive-update-contract.md](executive-update-contract.md).
+
 Odoo and Notion adapters run server-side. Their credentials must not be stored
 in the desktop app, a channel message, an agent definition, or a deployment
 manifest.
