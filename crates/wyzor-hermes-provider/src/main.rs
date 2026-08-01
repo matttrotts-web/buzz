@@ -77,7 +77,7 @@ fn info_response() -> Value {
         "ok": true,
         "name": "Wyzor Hermes",
         "version": env!("CARGO_PKG_VERSION"),
-        "description": "Builds a secure buzz-acp deployment bundle for Argus, Riggs, or KITT.",
+        "description": "Builds a secure, isolated buzz-acp deployment bundle for any Wyzor Hermes identity.",
         "config_schema": {
             "type": "object",
             "properties": {
@@ -124,7 +124,7 @@ fn deploy(request: ProviderRequest) -> Result<Value, String> {
     let bundle_dir = deployment_root.join(bundle_name);
     ensure_safe_directory(&deployment_root, &bundle_dir)?;
 
-    let runtime = runtime_layout(role);
+    let runtime = runtime_layout(&role)?;
     let hermes_home = optional_nonempty(request.provider_config.hermes_home.as_deref())
         .unwrap_or_else(|| runtime.hermes_home.to_string());
     let hermes_command = optional_nonempty(request.provider_config.hermes_command.as_deref())
@@ -139,12 +139,12 @@ fn deploy(request: ProviderRequest) -> Result<Value, String> {
     validate_remote_path("Hermes command", &hermes_command)?;
     validate_remote_path("harness path", &harness_path)?;
 
-    let env_file = render_env(role, &payload, &hermes_command, &hermes_args);
-    let service_file = render_service(role, runtime.user, &hermes_home, &harness_path);
-    let installer = render_installer(role, &hermes_command, &harness_path);
+    let env_file = render_env(&role, &payload, &hermes_command, &hermes_args);
+    let service_file = render_service(&role, &runtime.user, &hermes_home, &harness_path);
+    let installer = render_installer(&role, &hermes_home, &hermes_command, &harness_path);
     let manifest = render_manifest(
         &request.request_id,
-        role,
+        &role,
         &payload,
         &hermes_home,
         &hermes_command,
@@ -174,7 +174,7 @@ fn deploy(request: ProviderRequest) -> Result<Value, String> {
     )?;
     write_private(
         &bundle_dir.join("README.md"),
-        render_readme(role, &payload.name).as_bytes(),
+        render_readme(&role, &payload.name).as_bytes(),
         0o600,
     )?;
 
@@ -260,19 +260,39 @@ fn parse_agent(value: &Value) -> Result<AgentPayload, String> {
     Ok(payload)
 }
 
-fn normalize_role(role: Option<&str>) -> Result<&'static str, String> {
-    match role.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-        Some("argus") => Ok("argus"),
-        Some("riggs") => Ok("riggs"),
-        Some("kitt") => Ok("kitt"),
-        _ => Err("role must be one of: argus, riggs, kitt".to_string()),
+fn normalize_role(role: Option<&str>) -> Result<String, String> {
+    let value = role
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or("agent name must contain at least one letter or number".to_string())?;
+    let mut slug = String::new();
+    let mut separator_pending = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            if separator_pending && !slug.is_empty() {
+                slug.push('-');
+            }
+            slug.push(character.to_ascii_lowercase());
+            separator_pending = false;
+        } else if character.is_control() {
+            return Err("agent name may not contain control characters".to_string());
+        } else {
+            separator_pending = true;
+        }
     }
+    if slug.is_empty() {
+        return Err("agent name must contain at least one ASCII letter or number".to_string());
+    }
+    if slug.starts_with(|character: char| character.is_ascii_digit()) {
+        slug.insert_str(0, "agent-");
+    }
+    if slug.len() > 32 {
+        return Err("agent runtime ID may not exceed 32 characters".to_string());
+    }
+    Ok(slug)
 }
 
-fn deployment_role(
-    agent_name: &str,
-    _configured_role: Option<&str>,
-) -> Result<&'static str, String> {
+fn deployment_role(agent_name: &str, _configured_role: Option<&str>) -> Result<String, String> {
     // The record name is the durable Wyzor identity. The separate provider
     // field was a second source of truth and could silently retain "argus"
     // while the user created Riggs or KITT.
@@ -280,29 +300,18 @@ fn deployment_role(
 }
 
 struct RuntimeLayout {
-    user: &'static str,
-    hermes_home: &'static str,
-    hermes_args: &'static str,
+    user: String,
+    hermes_home: String,
+    hermes_args: String,
 }
 
-fn runtime_layout(role: &str) -> RuntimeLayout {
-    match role {
-        "kitt" => RuntimeLayout {
-            user: "hermes",
-            hermes_home: "/home/hermes/.hermes",
-            hermes_args: "--profile,kitt,acp",
-        },
-        "riggs" => RuntimeLayout {
-            user: "riggs",
-            hermes_home: "/home/riggs/.hermes",
-            hermes_args: "",
-        },
-        _ => RuntimeLayout {
-            user: "argus",
-            hermes_home: "/home/argus/.hermes",
-            hermes_args: "",
-        },
-    }
+fn runtime_layout(role: &str) -> Result<RuntimeLayout, String> {
+    let role = normalize_role(Some(role))?;
+    Ok(RuntimeLayout {
+        user: role.clone(),
+        hermes_home: format!("/home/{role}/.hermes"),
+        hermes_args: String::new(),
+    })
 }
 
 fn deployment_root(configured: Option<&str>) -> Result<PathBuf, String> {
@@ -417,9 +426,14 @@ fn render_service(role: &str, user: &str, hermes_home: &str, harness_path: &str)
     )
 }
 
-fn render_installer(role: &str, hermes_command: &str, harness_path: &str) -> String {
+fn render_installer(
+    role: &str,
+    hermes_home: &str,
+    hermes_command: &str,
+    harness_path: &str,
+) -> String {
     format!(
-        "#!/usr/bin/env bash\nset -euo pipefail\n[[ $EUID -eq 0 ]] || {{ echo 'Run with sudo' >&2; exit 1; }}\n[[ -x \"{hermes_command}\" ]] || {{ echo 'Missing Hermes ACP command: {hermes_command}' >&2; exit 1; }}\n[[ -x \"{harness_path}\" ]] || {{ echo 'Missing buzz-acp harness: {harness_path}' >&2; exit 1; }}\ninstall -d -m 700 /etc/wyzor-ops-mesh\ninstall -m 600 agent.env /etc/wyzor-ops-mesh/{role}.env\nif [[ -f system-prompt.txt ]]; then\n  install -m 600 system-prompt.txt /etc/wyzor-ops-mesh/{role}-system-prompt.txt\nfi\ninstall -m 644 wyzor-ops-mesh-agent.service /etc/systemd/system/wyzor-ops-mesh-{role}.service\nsystemctl daemon-reload\nsystemctl enable --now wyzor-ops-mesh-{role}.service\nsystemctl --no-pager status wyzor-ops-mesh-{role}.service\n"
+        "#!/usr/bin/env bash\nset -euo pipefail\n[[ $EUID -eq 0 ]] || {{ echo 'Run with sudo' >&2; exit 1; }}\n[[ -x \"{hermes_command}\" ]] || {{ echo 'Missing Hermes ACP command: {hermes_command}' >&2; exit 1; }}\n[[ -x \"{harness_path}\" ]] || {{ echo 'Missing buzz-acp harness: {harness_path}' >&2; exit 1; }}\nif ! id -u \"{role}\" >/dev/null 2>&1; then\n  useradd --system --user-group --create-home --home-dir \"/home/{role}\" --shell /usr/sbin/nologin \"{role}\"\nfi\ninstall -d -o \"{role}\" -g \"$(id -gn \"{role}\")\" -m 700 \"{hermes_home}\"\ninstall -d -m 700 /etc/wyzor-ops-mesh\ninstall -m 600 agent.env /etc/wyzor-ops-mesh/{role}.env\nif [[ -f system-prompt.txt ]]; then\n  install -m 600 system-prompt.txt /etc/wyzor-ops-mesh/{role}-system-prompt.txt\nfi\ninstall -m 644 wyzor-ops-mesh-agent.service /etc/systemd/system/wyzor-ops-mesh-{role}.service\nsystemctl daemon-reload\nsystemctl enable --now wyzor-ops-mesh-{role}.service\nsystemctl --no-pager status wyzor-ops-mesh-{role}.service\n"
     )
 }
 
@@ -516,15 +530,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn info_exposes_three_stable_roles() {
-        for role in ["Argus", "riggs", "KITT"] {
-            assert_eq!(
-                normalize_role(Some(role)).unwrap(),
-                role.to_ascii_lowercase()
-            );
+    fn agent_names_derive_safe_runtime_ids_without_an_allowlist() {
+        for (name, expected) in [
+            ("Argus", "argus"),
+            ("Dinesh", "dinesh"),
+            ("Bertram Gilfoyle", "bertram-gilfoyle"),
+            ("Agent #1", "agent-1"),
+            ("7 Builder", "agent-7-builder"),
+        ] {
+            assert_eq!(normalize_role(Some(name)).unwrap(), expected);
         }
-        assert!(normalize_role(Some("Hermes Ops")).is_err());
+        assert!(normalize_role(Some("🤖")).is_err());
         assert!(info_response()["config_schema"]["properties"]["role"].is_null());
+    }
+
+    #[test]
+    fn dinesh_has_an_isolated_runtime_identity() {
+        assert_eq!(deployment_role("Dinesh", None).unwrap(), "dinesh");
+
+        let dinesh = runtime_layout("dinesh").unwrap();
+        assert_eq!(dinesh.user, "dinesh");
+        assert_eq!(dinesh.hermes_home, "/home/dinesh/.hermes");
+        assert_eq!(dinesh.hermes_args, "");
+
+        let installer = render_installer(
+            "dinesh",
+            &dinesh.hermes_home,
+            "/opt/wyzor-ops-mesh/hermes",
+            "/opt/wyzor-ops-mesh/buzz-acp",
+        );
+        assert!(installer.contains("useradd --system --user-group"));
+        assert!(installer.contains("/home/dinesh"));
     }
 
     #[test]
@@ -543,29 +579,29 @@ mod tests {
 
     #[test]
     fn runtime_layout_matches_the_existing_named_agent_accounts() {
-        let argus = runtime_layout("argus");
+        let argus = runtime_layout("argus").unwrap();
         assert_eq!(argus.user, "argus");
         assert_eq!(argus.hermes_home, "/home/argus/.hermes");
         assert_eq!(argus.hermes_args, "");
 
-        let riggs = runtime_layout("riggs");
+        let riggs = runtime_layout("riggs").unwrap();
         assert_eq!(riggs.user, "riggs");
         assert_eq!(riggs.hermes_home, "/home/riggs/.hermes");
         assert_eq!(riggs.hermes_args, "");
 
-        let kitt = runtime_layout("kitt");
-        assert_eq!(kitt.user, "hermes");
-        assert_eq!(kitt.hermes_home, "/home/hermes/.hermes");
-        assert_eq!(kitt.hermes_args, "--profile,kitt,acp");
+        let kitt = runtime_layout("kitt").unwrap();
+        assert_eq!(kitt.user, "kitt");
+        assert_eq!(kitt.hermes_home, "/home/kitt/.hermes");
+        assert_eq!(kitt.hermes_args, "");
 
         let service = render_service(
             "kitt",
-            kitt.user,
-            kitt.hermes_home,
+            &kitt.user,
+            &kitt.hermes_home,
             "/opt/wyzor-ops-mesh/buzz-acp",
         );
-        assert!(service.contains("User=hermes"));
-        assert!(service.contains("Environment=HERMES_HOME=/home/hermes/.hermes"));
+        assert!(service.contains("User=kitt"));
+        assert!(service.contains("Environment=HERMES_HOME=/home/kitt/.hermes"));
     }
 
     #[test]
