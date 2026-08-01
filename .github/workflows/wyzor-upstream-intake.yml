@@ -1,0 +1,124 @@
+name: Wyzor Buzz Upstream Intake
+
+on:
+  schedule:
+    - cron: "15 13 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: wyzor-buzz-upstream-intake
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  intake:
+    name: Check official Buzz desktop releases
+    if: github.repository == 'matttrotts-web/buzz'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Configure update identity and official upstream
+        run: |
+          git config user.name 'Wyzor Update Bot'
+          git config user.email 'wyzor-update-bot@users.noreply.github.com'
+          git remote add upstream https://github.com/block/buzz.git 2>/dev/null || \
+            git remote set-url upstream https://github.com/block/buzz.git
+
+      - name: Prepare the latest official desktop release
+        id: intake
+        continue-on-error: true
+        env:
+          BASE_REF: origin/main
+          FORK_REMOTE: origin
+          UPSTREAM_REMOTE: upstream
+        run: OUTPUT_FILE="$GITHUB_OUTPUT" scripts/wyzor-upstream-intake.sh prepare
+
+      - name: Stop safely on merge conflicts or intake errors
+        if: steps.intake.outcome == 'failure'
+        env:
+          STATUS: ${{ steps.intake.outputs.status }}
+          RELEASE_TAG: ${{ steps.intake.outputs.latest_tag }}
+          CONFLICTS: ${{ steps.intake.outputs.conflicts }}
+        run: |
+          {
+            echo '## Buzz upstream intake needs manual resolution'
+            echo
+            echo "- Release: ${RELEASE_TAG:-unknown}"
+            echo "- Status: ${STATUS:-error}"
+            echo "- Conflicts: ${CONFLICTS:-not reported}"
+            echo
+            echo 'No branch was pushed and no pull request was opened.'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Report that Wyzor is current
+        if: steps.intake.outputs.status == 'no-update'
+        env:
+          RELEASE_TAG: ${{ steps.intake.outputs.latest_tag }}
+        run: echo "Wyzor already contains ${RELEASE_TAG}." >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the Wyzor preservation seam
+        if: steps.intake.outputs.status == 'prepared'
+        run: |
+          scripts/test-wyzor-upstream-intake.sh
+          scripts/test-wyzor-upstream-workflow.sh
+          node scripts/test-wyzor-product-identity.mjs
+          cargo metadata --no-deps --format-version 1 >/dev/null
+
+      - name: Push the verified update branch
+        if: steps.intake.outputs.status == 'prepared'
+        env:
+          BRANCH: ${{ steps.intake.outputs.branch }}
+        run: |
+          remote_oid=$(git ls-remote origin "refs/heads/$BRANCH" | awk '{print $1}')
+          if [[ -n "$remote_oid" ]]; then
+            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            git push --force-with-lease="refs/heads/$BRANCH:$remote_oid" \
+              origin "HEAD:refs/heads/$BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+      - name: Open or update the draft intake pull request
+        if: steps.intake.outputs.status == 'prepared'
+        env:
+          BRANCH: ${{ steps.intake.outputs.branch }}
+          RELEASE_TAG: ${{ steps.intake.outputs.latest_tag }}
+          PREVIOUS_TAG: ${{ steps.intake.outputs.integrated_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="chore: update Wyzor Ops Mesh to ${RELEASE_TAG#desktop-v}"
+          body=$(printf '%s\n' \
+            '## Automated Buzz upstream intake' \
+            '' \
+            "- Official release: $RELEASE_TAG" \
+            "- Previously integrated: $PREVIOUS_TAG" \
+            '- Preserved surface: Wyzor identity, Mission Control, and CRM integration seam' \
+            '- Native Hermes source: official Buzz runtime catalog' \
+            '' \
+            'The preservation contracts passed before this branch was pushed. The normal pull-request CI now owns the full test and build gates.' \
+            '' \
+            'This workflow does not merge, install the app, deploy relay code, apply migrations, or change secrets. Installation and any relay/database rollout remain approval-gated.')
+          existing=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number')
+          if [[ -n "$existing" ]]; then
+            gh pr edit "$existing" --title "$title" --body "$body"
+            url=$(gh pr view "$existing" --json url --jq .url)
+          else
+            url=$(gh pr create --draft --base main --head "$BRANCH" --title "$title" --body "$body")
+          fi
+          {
+            echo '## Buzz upstream update prepared'
+            echo
+            echo "- Release: $RELEASE_TAG"
+            echo "- Draft PR: $url"
+            echo '- Next gate: normal pull-request CI and human review'
+          } >>"$GITHUB_STEP_SUMMARY"
