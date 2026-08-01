@@ -134,9 +134,7 @@ fn deploy(request: ProviderRequest) -> Result<Value, String> {
     let harness_path = optional_nonempty(request.provider_config.harness_path.as_deref())
         .unwrap_or_else(|| "/opt/wyzor-ops-mesh/buzz-acp".to_string());
 
-    for (label, value) in [("Hermes arguments", hermes_args.as_str())] {
-        reject_control_chars(label, value)?;
-    }
+    reject_control_chars("Hermes arguments", &hermes_args)?;
     validate_remote_path("Hermes home", &hermes_home)?;
     validate_remote_path("Hermes command", &hermes_command)?;
     validate_remote_path("harness path", &harness_path)?;
