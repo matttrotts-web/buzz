@@ -7,9 +7,16 @@ import {
   useRelayAgentsQuery,
 } from "@/features/agents/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { channelNamesMatch } from "@/features/channels/lib/canonicalChannelName";
 import {
+  useChannelMessagesQuery,
+  useChannelSubscription,
+} from "@/features/messages/hooks";
+import {
+  buildCrmSnapshots,
   buildExecutiveUpdates,
   connectionStateForRole,
+  crmSnapshotState,
   type MissionControlView,
   trustedExecutiveIdentities,
   WYZOR_AGENT_LANES,
@@ -53,6 +60,18 @@ export function MissionControlScreen() {
   const channels = channelsQuery.data ?? [];
   const managedAgents = managedAgentsQuery.data ?? [];
   const relayAgents = relayAgentsQuery.data ?? [];
+  const trustedIdentities = React.useMemo(
+    () => trustedExecutiveIdentities(managedAgents, relayAgents),
+    [managedAgents, relayAgents],
+  );
+  const crmChannel = React.useMemo(
+    () =>
+      channels.find((channel) => channelNamesMatch(channel.name, "crm-ops")) ??
+      null,
+    [channels],
+  );
+  const crmMessagesQuery = useChannelMessagesQuery(crmChannel);
+  useChannelSubscription(crmChannel);
   const executiveUpdates = React.useMemo(() => {
     const feed = homeFeedQuery.data?.feed;
     const items = feed
@@ -63,11 +82,21 @@ export function MissionControlScreen() {
           ...feed.agentActivity,
         ]
       : [];
-    return buildExecutiveUpdates(
-      items,
-      trustedExecutiveIdentities(managedAgents, relayAgents),
-    );
-  }, [homeFeedQuery.data, managedAgents, relayAgents]);
+    return buildExecutiveUpdates(items, trustedIdentities);
+  }, [homeFeedQuery.data, trustedIdentities]);
+  const crmSnapshot = React.useMemo(() => {
+    if (!crmChannel) return null;
+    const items = (crmMessagesQuery.data ?? []).map((event) => ({
+      id: event.id,
+      pubkey: event.pubkey,
+      content: event.content,
+      createdAt: event.created_at,
+      channelId: crmChannel.id,
+      channelName: crmChannel.name,
+    }));
+    return buildCrmSnapshots(items, trustedIdentities)[0] ?? null;
+  }, [crmChannel, crmMessagesQuery.data, trustedIdentities]);
+  const crmState = crmSnapshotState(crmSnapshot);
   const activeManagedAgentCount = managedAgents.filter(
     (agent) => agent.status === "running" || agent.status === "deployed",
   ).length;
@@ -92,7 +121,10 @@ export function MissionControlScreen() {
               agents={agentStates}
               activeManagedAgentCount={activeManagedAgentCount}
               channels={channels}
+              crmSnapshot={crmSnapshot}
+              crmState={crmState}
               executiveUpdates={executiveUpdates}
+              isCrmLoading={crmMessagesQuery.isLoading}
               isExecutiveFeedLoading={homeFeedQuery.isLoading}
               managedAgentCount={managedAgents.length}
               onOpenChannel={(channelId) => void goChannel(channelId)}
@@ -131,7 +163,14 @@ export function MissionControlScreen() {
           </TabsContent>
 
           <TabsContent className="mt-0" value="data">
-            <MissionControlData />
+            <MissionControlData
+              crmSnapshot={crmSnapshot}
+              crmState={crmState}
+              isCrmLoading={crmMessagesQuery.isLoading}
+              onOpenCrmChannel={() =>
+                crmChannel ? void goChannel(crmChannel.id) : undefined
+              }
+            />
           </TabsContent>
         </div>
       </Tabs>

@@ -10,9 +10,15 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { DATA_SOURCE_CATALOG } from "@/features/mission-control/model";
+import {
+  DATA_SOURCE_CATALOG,
+  type CrmSnapshot,
+  type CrmSnapshotState,
+} from "@/features/mission-control/model";
 import { Badge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+
+import { MissionControlCrmSnapshot } from "./MissionControlCrmSnapshot";
 
 const businessViews = [
   {
@@ -45,9 +51,26 @@ const businessViews = [
   },
 ] as const;
 
-export function MissionControlData() {
+export function MissionControlData({
+  crmSnapshot,
+  crmState,
+  isCrmLoading,
+  onOpenCrmChannel,
+}: {
+  crmSnapshot: CrmSnapshot | null;
+  crmState: CrmSnapshotState;
+  isCrmLoading: boolean;
+  onOpenCrmChannel: () => void;
+}) {
   return (
     <div className="space-y-6">
+      <MissionControlCrmSnapshot
+        isLoading={isCrmLoading}
+        onOpenCrmChannel={onOpenCrmChannel}
+        snapshot={crmSnapshot}
+        state={crmState}
+      />
+
       <section>
         <div className="mb-3">
           <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -98,53 +121,72 @@ export function MissionControlData() {
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-border/60">
-              {DATA_SOURCE_CATALOG.map((source) => (
-                <div
-                  className="grid gap-3 px-5 py-4 md:grid-cols-[1.05fr_0.8fr_0.8fr_1.35fr] md:items-center"
-                  key={source.id}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
-                      {source.id === "notion" ? (
-                        <FileText className="h-4 w-4" />
-                      ) : source.id === "gates" ? (
-                        <ShieldCheck className="h-4 w-4" />
-                      ) : (
-                        <Database className="h-4 w-4" />
-                      )}
+              {DATA_SOURCE_CATALOG.map((source) => {
+                const isOdoo = source.id === "odoo";
+                const connectorState = isOdoo ? crmState : source.state;
+                const connectorLabel = isOdoo
+                  ? crmState === "connected"
+                    ? "Connected"
+                    : crmState === "stale"
+                      ? "Stale"
+                      : "Snapshot required"
+                  : source.state === "adapter-required"
+                    ? "Adapter required"
+                    : "Agent stream";
+                return (
+                  <div
+                    className="grid gap-3 px-5 py-4 md:grid-cols-[1.05fr_0.8fr_0.8fr_1.35fr] md:items-center"
+                    key={source.id}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
+                        {source.id === "notion" ? (
+                          <FileText className="h-4 w-4" />
+                        ) : source.id === "gates" ? (
+                          <ShieldCheck className="h-4 w-4" />
+                        ) : (
+                          <Database className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{source.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {source.domains}
+                        </p>
+                      </div>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold">{source.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {source.domains}
+                        Flow owner
                       </p>
+                      <p className="text-sm">{source.owner}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
+                      <p className="text-sm">{source.direction}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        {source.description}
+                      </p>
+                      <Badge
+                        className="shrink-0"
+                        variant={
+                          connectorState === "connected"
+                            ? "success"
+                            : connectorState === "adapter-required" ||
+                                connectorState === "stale" ||
+                                connectorState === "missing"
+                              ? "warning"
+                              : "info"
+                        }
+                      >
+                        {connectorLabel}
+                      </Badge>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Flow owner</p>
-                    <p className="text-sm">{source.owner}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-sm">{source.direction}</p>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      {source.description}
-                    </p>
-                    <Badge
-                      className="shrink-0"
-                      variant={
-                        source.state === "adapter-required" ? "warning" : "info"
-                      }
-                    >
-                      {source.state === "adapter-required"
-                        ? "Adapter required"
-                        : "Agent stream"}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

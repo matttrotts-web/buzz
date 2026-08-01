@@ -47,6 +47,25 @@ Odoo and Notion adapters run server-side. Their credentials must not be stored
 in the desktop app, a channel message, an agent definition, or a deployment
 manifest.
 
+## CRM snapshot projection
+
+KITT publishes the compact `WYZOR_CRM_SNAPSHOT_V1` envelope to the private
+`crm-ops` channel. Mission Control accepts it only when the Nostr event is
+signed by the currently registered KITT identity. The envelope must declare
+`source: "odoo"` and `authority: "projection"`; KITT cannot claim to be the
+system of record.
+
+The snapshot contains aggregate lead, opportunity, pipeline, and overdue
+activity counts; a bounded stage summary; and at most eight top opportunities.
+It contains no contact email, phone number, credential, access token, or raw
+Odoo payload. HTTPS Odoo deployments may include record deep links. A loopback
+Odoo deployment emits `null` links because a desktop cannot safely resolve the
+server's loopback address.
+
+Snapshots older than 24 hours remain visible but are labeled stale. Missing,
+malformed, untrusted, wrong-lane, unsafe-link, and false-authority envelopes
+fail closed and do not affect the dashboard.
+
 ## Remote Hermes deployment
 
 The bundled `buzz-backend-wyzor-hermes` provider prepares a private deployment

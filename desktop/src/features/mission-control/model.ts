@@ -1,4 +1,10 @@
 export type WyzorAgentRole = "argus" | "riggs" | "kitt";
+export {
+  buildCrmSnapshots,
+  CRM_SNAPSHOT_SENTINEL,
+  crmSnapshotState,
+} from "./crmModel";
+export type { CrmSnapshot, CrmSnapshotState } from "./crmModel";
 export type ExecutiveLane = "gtm" | "ops" | "riggs";
 export type ExecutiveUpdateKind = "standup" | "news" | "decision";
 export type StandupPeriod = "morning" | "afternoon" | "evening";

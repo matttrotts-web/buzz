@@ -2,14 +2,49 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCrmSnapshots,
   buildExecutiveUpdates,
   connectionStateForRole,
+  CRM_SNAPSHOT_SENTINEL,
+  crmSnapshotState,
   EXECUTIVE_UPDATE_SENTINEL,
   groupMissionsByStage,
   missionStageForStatus,
   summarizeConnections,
   trustedExecutiveIdentities,
 } from "./model.ts";
+
+function crmSnapshotContent(overrides = {}) {
+  return `${CRM_SNAPSHOT_SENTINEL}\n${JSON.stringify({
+    schema_version: 1,
+    source: "odoo",
+    authority: "projection",
+    generated_at: "2026-08-01T16:00:00Z",
+    currency: "USD",
+    metrics: {
+      lead_count: 41,
+      open_opportunity_count: 7,
+      pipeline_value: 125000,
+      overdue_activity_count: 2,
+    },
+    stages: [
+      { name: "Qualified", count: 3, value: 80000 },
+      { name: "New", count: 4, value: 45000 },
+    ],
+    top_opportunities: [
+      {
+        record_id: "42",
+        name: "Garden State Labs",
+        stage: "Qualified",
+        expected_revenue: 50000,
+        probability: 60,
+        next_activity_due: "2026-08-02",
+        source_url: "https://crm.example.test/web#id=42&model=crm.lead",
+      },
+    ],
+    ...overrides,
+  })}`;
+}
 
 test("relay presence takes precedence over local deployment state", () => {
   const result = connectionStateForRole(
@@ -219,4 +254,132 @@ test("malformed or incomplete executive envelopes fail closed", () => {
     ),
     [],
   );
+});
+
+test("KITT signed Odoo snapshots become CRM projections", () => {
+  const snapshots = buildCrmSnapshots(
+    [
+      {
+        id: "crm-event-1",
+        pubkey: "KITT-PUBKEY",
+        content: crmSnapshotContent(),
+        createdAt: 1_754_067_600,
+        channelId: "crm-ops",
+        channelName: "crm-ops",
+      },
+    ],
+    [{ pubkey: "kitt-pubkey", role: "kitt" }],
+  );
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0].metrics.openOpportunityCount, 7);
+  assert.equal(snapshots[0].metrics.pipelineValue, 125000);
+  assert.equal(snapshots[0].topOpportunities[0].recordId, "42");
+  assert.equal(snapshots[0].topOpportunities[0].stage, "Qualified");
+});
+
+test("CRM snapshots fail closed for non-KITT signers or false authority", () => {
+  const item = {
+    id: "crm-event-1",
+    pubkey: "argus-pubkey",
+    content: crmSnapshotContent(),
+    createdAt: 1_754_067_600,
+    channelId: "crm-ops",
+    channelName: "crm-ops",
+  };
+
+  assert.deepEqual(
+    buildCrmSnapshots([item], [{ pubkey: "argus-pubkey", role: "argus" }]),
+    [],
+  );
+  assert.deepEqual(
+    buildCrmSnapshots(
+      [
+        {
+          ...item,
+          pubkey: "kitt-pubkey",
+          content: crmSnapshotContent({ authority: "system_of_record" }),
+        },
+      ],
+      [{ pubkey: "kitt-pubkey", role: "kitt" }],
+    ),
+    [],
+  );
+});
+
+test("malformed CRM values and unsafe deep links are rejected", () => {
+  const feed = (content) => [
+    {
+      id: content,
+      pubkey: "kitt",
+      content,
+      createdAt: 100,
+      channelId: "crm-ops",
+      channelName: "crm-ops",
+    },
+  ];
+  const trusted = [{ pubkey: "kitt", role: "kitt" }];
+
+  assert.deepEqual(
+    buildCrmSnapshots(
+      feed(
+        crmSnapshotContent({
+          metrics: {
+            lead_count: -1,
+            open_opportunity_count: 7,
+            pipeline_value: 1,
+            overdue_activity_count: 0,
+          },
+        }),
+      ),
+      trusted,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    buildCrmSnapshots(
+      feed(
+        crmSnapshotContent({
+          top_opportunities: [
+            {
+              record_id: "42",
+              name: "Unsafe",
+              stage: "New",
+              expected_revenue: 1,
+              probability: 10,
+              source_url: "javascript:alert(1)",
+            },
+          ],
+        }),
+      ),
+      trusted,
+    ),
+    [],
+  );
+});
+
+test("CRM snapshot freshness is explicit", () => {
+  const snapshot = buildCrmSnapshots(
+    [
+      {
+        id: "fresh",
+        pubkey: "kitt",
+        content: crmSnapshotContent(),
+        createdAt: 1_754_067_600,
+        channelId: "crm-ops",
+        channelName: "crm-ops",
+      },
+    ],
+    [{ pubkey: "kitt", role: "kitt" }],
+  )[0];
+
+  assert.equal(
+    crmSnapshotState(snapshot, Date.parse("2026-08-01T20:00:00Z")),
+    "connected",
+  );
+  assert.equal(
+    crmSnapshotState(snapshot, Date.parse("2026-08-03T20:00:00Z")),
+    "stale",
+  );
+  assert.equal(crmSnapshotState(null, Date.now()), "missing");
 });

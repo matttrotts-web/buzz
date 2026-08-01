@@ -16,6 +16,8 @@ import {
 
 import type {
   AgentLaneState,
+  CrmSnapshot,
+  CrmSnapshotState,
   ExecutiveHealth,
   ExecutiveLane,
   ExecutiveUpdate,
@@ -29,11 +31,15 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 
 import { MissionControlAgentGrid } from "./MissionControlAgentGrid";
+import { MissionControlCrmSnapshot } from "./MissionControlCrmSnapshot";
 
 export function MissionControlOverview({
   agents,
   channels,
+  crmSnapshot,
+  crmState,
   executiveUpdates,
+  isCrmLoading,
   isExecutiveFeedLoading,
   managedAgentCount,
   activeManagedAgentCount,
@@ -46,7 +52,10 @@ export function MissionControlOverview({
 }: {
   agents: readonly AgentLaneState[];
   channels: readonly Channel[];
+  crmSnapshot: CrmSnapshot | null;
+  crmState: CrmSnapshotState;
   executiveUpdates: readonly ExecutiveUpdate[];
+  isCrmLoading: boolean;
   isExecutiveFeedLoading: boolean;
   managedAgentCount: number;
   activeManagedAgentCount: number;
@@ -117,10 +126,31 @@ export function MissionControlOverview({
           value={String(operationalChannels.length)}
         />
         <MetricCard
-          detail="Odoo and Notion pending"
+          detail={
+            crmState === "connected"
+              ? "Odoo live · Notion pending"
+              : crmState === "stale"
+                ? "Odoo stale · Notion pending"
+                : "Odoo and Notion pending"
+          }
           icon={<Database className="h-4 w-4" />}
           label="External adapters"
-          value="0 / 2"
+          value={crmState === "missing" ? "0 / 2" : "1 / 2"}
+        />
+      </section>
+
+      <section className="space-y-3">
+        <SectionHeading
+          description="A compact signed projection keeps CRM truth visible without copying credentials or making Mission Control the system of record."
+          title="Revenue command panel"
+        />
+        <MissionControlCrmSnapshot
+          isLoading={isCrmLoading}
+          onOpenCrmChannel={() => {
+            if (crmSnapshot?.channelId) onOpenChannel(crmSnapshot.channelId);
+          }}
+          snapshot={crmSnapshot}
+          state={crmState}
         />
       </section>
 
