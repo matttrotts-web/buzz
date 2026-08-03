@@ -14,11 +14,14 @@ import {
   DATA_SOURCE_CATALOG,
   type CrmSnapshot,
   type CrmSnapshotState,
+  type DbSnapshot,
+  type DbSnapshotState,
 } from "@/features/mission-control/model";
 import { Badge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 
 import { MissionControlCrmSnapshot } from "./MissionControlCrmSnapshot";
+import { MissionControlDbSnapshot } from "./MissionControlDbSnapshot";
 
 const businessViews = [
   {
@@ -54,13 +57,21 @@ const businessViews = [
 export function MissionControlData({
   crmSnapshot,
   crmState,
+  dbSnapshot,
+  dbState,
   isCrmLoading,
+  isDbLoading,
   onOpenCrmChannel,
+  onOpenDbChannel,
 }: {
   crmSnapshot: CrmSnapshot | null;
   crmState: CrmSnapshotState;
+  dbSnapshot: DbSnapshot | null;
+  dbState: DbSnapshotState;
   isCrmLoading: boolean;
+  isDbLoading: boolean;
   onOpenCrmChannel: () => void;
+  onOpenDbChannel: () => void;
 }) {
   return (
     <div className="space-y-6">
@@ -69,6 +80,13 @@ export function MissionControlData({
         onOpenCrmChannel={onOpenCrmChannel}
         snapshot={crmSnapshot}
         state={crmState}
+      />
+
+      <MissionControlDbSnapshot
+        isLoading={isDbLoading}
+        onOpenChannel={onOpenDbChannel}
+        snapshot={dbSnapshot}
+        state={dbState}
       />
 
       <section>
@@ -123,16 +141,27 @@ export function MissionControlData({
             <div className="divide-y divide-border/60">
               {DATA_SOURCE_CATALOG.map((source) => {
                 const isOdoo = source.id === "odoo";
-                const connectorState = isOdoo ? crmState : source.state;
+                const isWyzorDb = source.id === "wyzor-db";
+                const connectorState = isOdoo
+                  ? crmState
+                  : isWyzorDb
+                    ? dbState
+                    : source.state;
                 const connectorLabel = isOdoo
                   ? crmState === "connected"
                     ? "Connected"
                     : crmState === "stale"
                       ? "Stale"
                       : "Snapshot required"
-                  : source.state === "adapter-required"
-                    ? "Adapter required"
-                    : "Agent stream";
+                  : isWyzorDb
+                    ? dbState === "connected"
+                      ? "Connected"
+                      : dbState === "stale"
+                        ? "Stale"
+                        : "Snapshot required"
+                    : source.state === "adapter-required"
+                      ? "Adapter required"
+                      : "Agent stream";
                 return (
                   <div
                     className="grid gap-3 px-5 py-4 md:grid-cols-[1.05fr_0.8fr_0.8fr_1.35fr] md:items-center"

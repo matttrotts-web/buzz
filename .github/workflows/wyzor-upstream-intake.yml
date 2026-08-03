@@ -71,6 +71,7 @@ jobs:
         run: |
           scripts/test-wyzor-upstream-intake.sh
           scripts/test-wyzor-upstream-workflow.sh
+          scripts/test-wyzor-integration-seams.sh
           node scripts/test-wyzor-product-identity.mjs
           cargo metadata --no-deps --format-version 1 >/dev/null
 

@@ -14,9 +14,11 @@ import {
 } from "@/features/messages/hooks";
 import {
   buildCrmSnapshots,
+  buildDbSnapshots,
   buildExecutiveUpdates,
   connectionStateForRole,
   crmSnapshotState,
+  dbSnapshotState,
   type MissionControlView,
   trustedExecutiveIdentities,
   WYZOR_AGENT_LANES,
@@ -70,8 +72,16 @@ export function MissionControlScreen() {
       null,
     [channels],
   );
+  const dbChannel = React.useMemo(
+    () =>
+      channels.find((channel) => channelNamesMatch(channel.name, "data-ops")) ??
+      null,
+    [channels],
+  );
   const crmMessagesQuery = useChannelMessagesQuery(crmChannel);
+  const dbMessagesQuery = useChannelMessagesQuery(dbChannel);
   useChannelSubscription(crmChannel);
+  useChannelSubscription(dbChannel);
   const executiveUpdates = React.useMemo(() => {
     const feed = homeFeedQuery.data?.feed;
     const items = feed
@@ -97,6 +107,19 @@ export function MissionControlScreen() {
     return buildCrmSnapshots(items, trustedIdentities)[0] ?? null;
   }, [crmChannel, crmMessagesQuery.data, trustedIdentities]);
   const crmState = crmSnapshotState(crmSnapshot);
+  const dbSnapshot = React.useMemo(() => {
+    if (!dbChannel) return null;
+    const items = (dbMessagesQuery.data ?? []).map((event) => ({
+      id: event.id,
+      pubkey: event.pubkey,
+      content: event.content,
+      createdAt: event.created_at,
+      channelId: dbChannel.id,
+      channelName: dbChannel.name,
+    }));
+    return buildDbSnapshots(items, trustedIdentities)[0] ?? null;
+  }, [dbChannel, dbMessagesQuery.data, trustedIdentities]);
+  const dbState = dbSnapshotState(dbSnapshot);
   const activeManagedAgentCount = managedAgents.filter(
     (agent) => agent.status === "running" || agent.status === "deployed",
   ).length;
@@ -123,6 +146,7 @@ export function MissionControlScreen() {
               channels={channels}
               crmSnapshot={crmSnapshot}
               crmState={crmState}
+              dbState={dbState}
               executiveUpdates={executiveUpdates}
               isCrmLoading={crmMessagesQuery.isLoading}
               isExecutiveFeedLoading={homeFeedQuery.isLoading}
@@ -166,9 +190,15 @@ export function MissionControlScreen() {
             <MissionControlData
               crmSnapshot={crmSnapshot}
               crmState={crmState}
+              dbSnapshot={dbSnapshot}
+              dbState={dbState}
               isCrmLoading={crmMessagesQuery.isLoading}
+              isDbLoading={dbMessagesQuery.isLoading}
               onOpenCrmChannel={() =>
                 crmChannel ? void goChannel(crmChannel.id) : undefined
+              }
+              onOpenDbChannel={() =>
+                dbChannel ? void goChannel(dbChannel.id) : undefined
               }
             />
           </TabsContent>

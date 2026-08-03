@@ -18,6 +18,7 @@ import type {
   AgentLaneState,
   CrmSnapshot,
   CrmSnapshotState,
+  DbSnapshotState,
   ExecutiveHealth,
   ExecutiveLane,
   ExecutiveUpdate,
@@ -38,6 +39,7 @@ export function MissionControlOverview({
   channels,
   crmSnapshot,
   crmState,
+  dbState,
   executiveUpdates,
   isCrmLoading,
   isExecutiveFeedLoading,
@@ -54,6 +56,7 @@ export function MissionControlOverview({
   channels: readonly Channel[];
   crmSnapshot: CrmSnapshot | null;
   crmState: CrmSnapshotState;
+  dbState: DbSnapshotState;
   executiveUpdates: readonly ExecutiveUpdate[];
   isCrmLoading: boolean;
   isExecutiveFeedLoading: boolean;
@@ -126,16 +129,10 @@ export function MissionControlOverview({
           value={String(operationalChannels.length)}
         />
         <MetricCard
-          detail={
-            crmState === "connected"
-              ? "Odoo live · Notion pending"
-              : crmState === "stale"
-                ? "Odoo stale · Notion pending"
-                : "Odoo and Notion pending"
-          }
+          detail={`Odoo ${crmState} · Wyzor DB ${dbState} · Notion pending`}
           icon={<Database className="h-4 w-4" />}
           label="External adapters"
-          value={crmState === "missing" ? "0 / 2" : "1 / 2"}
+          value={`${Number(crmState !== "missing") + Number(dbState !== "missing")} / 3`}
         />
       </section>
 

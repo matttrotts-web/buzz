@@ -5,6 +5,12 @@ export {
   crmSnapshotState,
 } from "./crmModel";
 export type { CrmSnapshot, CrmSnapshotState } from "./crmModel";
+export {
+  buildDbSnapshots,
+  DB_SNAPSHOT_SENTINEL,
+  dbSnapshotState,
+} from "./dbModel";
+export type { DbSnapshot, DbSnapshotState } from "./dbModel";
 export type ExecutiveLane = "gtm" | "ops" | "riggs";
 export type ExecutiveUpdateKind = "standup" | "news" | "decision";
 export type StandupPeriod = "morning" | "afternoon" | "evening";
@@ -209,6 +215,17 @@ export function groupMissionsByStage(
 }
 
 export const DATA_SOURCE_CATALOG = [
+  {
+    id: "wyzor-db",
+    name: "Wyzor PostgreSQL",
+    domains: "METRC ERP · Jobs · Gates",
+    authority: "System of record",
+    owner: "Argus projection service",
+    direction: "Read-only aggregate",
+    state: "adapter-required",
+    description:
+      "Bounded operational and METRC ERP health counts; no customer rows or credentials.",
+  },
   {
     id: "odoo",
     name: "Odoo",

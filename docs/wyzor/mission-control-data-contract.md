@@ -10,6 +10,7 @@ events. It is not an ERP or CRM database.
 | ERP, CRM, sales records, orders, invoices | Odoo | KITT may summarize GTM and sales activity |
 | Specs, runbooks, briefs, decisions | Notion or the owning repository | Relevant agents may link and summarize |
 | Operational jobs, evidence, incidents | Owning Wyzor service | Argus publishes signed observations and handoffs |
+| METRC ERP and operational database health | Wyzor PostgreSQL | Argus publishes bounded aggregate health snapshots |
 | Review, promotion, deployment gates | Wyzor gate ledger | Riggs publishes signed verdicts |
 | Human approval | Matt under the applicable gate policy | No agent may impersonate or bypass it |
 
@@ -65,6 +66,20 @@ server's loopback address.
 Snapshots older than 24 hours remain visible but are labeled stale. Missing,
 malformed, untrusted, wrong-lane, unsafe-link, and false-authority envelopes
 fail closed and do not affect the dashboard.
+
+## Database operations projection
+
+Argus publishes `WYZOR_DB_SNAPSHOT_V1` to the private `data-ops` channel from a
+server-side adapter authenticated with a dedicated read-only PostgreSQL role.
+Mission Control accepts this envelope only from the currently registered Argus
+identity and labels it stale after one hour.
+
+The envelope contains only allowlisted aggregate counts for agent jobs, crawl
+runs, gates, integration health, inventory, METRC mismatches, plants, transfers,
+and sales orders. It contains no customer row, contact field, record identifier,
+credential, database URL, arbitrary query result, or raw JSON column. The
+adapter enforces a read-only transaction and a statement timeout. Missing,
+malformed, untrusted, false-authority, and negative-count envelopes fail closed.
 
 ## Remote Hermes deployment
 

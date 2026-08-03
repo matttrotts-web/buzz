@@ -3,10 +3,13 @@ import test from "node:test";
 
 import {
   buildCrmSnapshots,
+  buildDbSnapshots,
   buildExecutiveUpdates,
   connectionStateForRole,
   CRM_SNAPSHOT_SENTINEL,
   crmSnapshotState,
+  DB_SNAPSHOT_SENTINEL,
+  dbSnapshotState,
   EXECUTIVE_UPDATE_SENTINEL,
   groupMissionsByStage,
   missionStageForStatus,
@@ -42,6 +45,30 @@ function crmSnapshotContent(overrides = {}) {
         source_url: "https://crm.example.test/web#id=42&model=crm.lead",
       },
     ],
+    ...overrides,
+  })}`;
+}
+
+function dbSnapshotContent(overrides = {}) {
+  return `${DB_SNAPSHOT_SENTINEL}\n${JSON.stringify({
+    schema_version: 1,
+    source: "wyzor-postgres",
+    authority: "projection",
+    generated_at: "2026-08-03T16:00:00Z",
+    metrics: {
+      agent_jobs: { unarchived: 10, active: 4, failed: 1 },
+      crawl_runs_24h: { total: 20, failed: 2 },
+      gates: { total: 50, blocked_or_failed: 3 },
+      integrations: { total: 5, unhealthy: 1 },
+      metrc_erp: {
+        inventory_items: 100,
+        metrc_mismatches: 2,
+        inventory_on_hold: 3,
+        active_plants: 40,
+        open_transfers: 6,
+        open_sales_orders: 7,
+      },
+    },
     ...overrides,
   })}`;
 }
@@ -382,4 +409,82 @@ test("CRM snapshot freshness is explicit", () => {
     "stale",
   );
   assert.equal(crmSnapshotState(null, Date.now()), "missing");
+});
+
+test("Argus signed database snapshots become Ops projections", () => {
+  const snapshots = buildDbSnapshots(
+    [
+      {
+        id: "db-event-1",
+        pubkey: "ARGUS-PUBKEY",
+        content: dbSnapshotContent(),
+        createdAt: 1_754_238_000,
+        channelId: "data-ops",
+        channelName: "data-ops",
+      },
+    ],
+    [{ pubkey: "argus-pubkey", role: "argus" }],
+  );
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0].metrics.metrcErp.inventoryItems, 100);
+  assert.equal(snapshots[0].metrics.metrcErp.metrcMismatches, 2);
+  assert.equal(snapshots[0].metrics.agentJobs.active, 4);
+});
+
+test("database snapshots reject non-Argus signers and malformed counts", () => {
+  const item = {
+    id: "db-event-1",
+    pubkey: "kitt-pubkey",
+    content: dbSnapshotContent(),
+    createdAt: 1_754_238_000,
+    channelId: "data-ops",
+    channelName: "data-ops",
+  };
+  assert.deepEqual(
+    buildDbSnapshots([item], [{ pubkey: "kitt-pubkey", role: "kitt" }]),
+    [],
+  );
+  assert.deepEqual(
+    buildDbSnapshots(
+      [
+        {
+          ...item,
+          pubkey: "argus-pubkey",
+          content: dbSnapshotContent({
+            metrics: {
+              agent_jobs: { unarchived: -1, active: 0, failed: 0 },
+            },
+          }),
+        },
+      ],
+      [{ pubkey: "argus-pubkey", role: "argus" }],
+    ),
+    [],
+  );
+});
+
+test("database snapshot freshness is explicit", () => {
+  const snapshot = buildDbSnapshots(
+    [
+      {
+        id: "fresh-db",
+        pubkey: "argus",
+        content: dbSnapshotContent(),
+        createdAt: 1_754_238_000,
+        channelId: "data-ops",
+        channelName: "data-ops",
+      },
+    ],
+    [{ pubkey: "argus", role: "argus" }],
+  )[0];
+
+  assert.equal(
+    dbSnapshotState(snapshot, Date.parse("2026-08-03T16:30:00Z")),
+    "connected",
+  );
+  assert.equal(
+    dbSnapshotState(snapshot, Date.parse("2026-08-03T18:00:00Z")),
+    "stale",
+  );
 });
