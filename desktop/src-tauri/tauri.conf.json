@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Buzz",
-  "version": "0.5.2",
-  "identifier": "xyz.block.buzz.app",
+  "productName": "Wyzor Ops Mesh",
+  "version": "0.5.3",
+  "identifier": "ai.wyzor.opsmesh",
   "build": {
     "beforeDevCommand": {
       "script": "exec ./node_modules/.bin/vite",
@@ -45,7 +45,7 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["buzz"]
+        "schemes": ["wyzor-mesh"]
       }
     }
   },
@@ -57,7 +57,8 @@
       "binaries/buzz-agent",
       "binaries/buzz-dev-mcp",
       "binaries/git-credential-nostr",
-      "binaries/buzz"
+      "binaries/buzz",
+      "binaries/buzz-backend-wyzor-hermes"
     ],
     "icon": [
       "icons/32x32.png",

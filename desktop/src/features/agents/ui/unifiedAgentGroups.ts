@@ -1,5 +1,10 @@
-import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
-import type { AgentPersona, ManagedAgent } from "@/shared/api/types";
+import { isManagedAgentLive } from "@/features/agents/lib/managedAgentControlActions";
+import type {
+  AgentPersona,
+  ManagedAgent,
+  PresenceLookup,
+} from "@/shared/api/types";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 type PersonaGroup = { persona: AgentPersona; agents: ManagedAgent[] };
 
@@ -34,10 +39,21 @@ export function buildUnifiedGroups(
   return { groups, ungrouped, unknown };
 }
 
-export function pickProfileAgent(agents: ManagedAgent[]) {
+export function pickProfileAgent(
+  agents: ManagedAgent[],
+  presenceLookup: PresenceLookup = {},
+) {
   return [...agents].sort((left, right) => {
     const activeDiff =
-      Number(isManagedAgentActive(right)) - Number(isManagedAgentActive(left));
+      Number(
+        isManagedAgentLive(
+          right,
+          presenceLookup[normalizePubkey(right.pubkey)],
+        ),
+      ) -
+      Number(
+        isManagedAgentLive(left, presenceLookup[normalizePubkey(left.pubkey)]),
+      );
     if (activeDiff !== 0) return activeDiff;
     return left.name.localeCompare(right.name);
   })[0];

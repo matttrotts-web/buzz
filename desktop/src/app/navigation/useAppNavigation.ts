@@ -68,11 +68,34 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goMissionControl = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/mission-control",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
         {
           to: "/pulse",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goProfile = React.useCallback(
+    (pubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/pulse",
+          search: { profile: pubkey },
         },
         behavior,
       ),
@@ -299,10 +322,12 @@ export function useAppNavigation() {
     goChannel,
     goForumPost,
     goHome,
+    goMissionControl,
     goNewMessage,
     goProject,
     goProjects,
     goPulse,
+    goProfile,
     goSettings,
     goWorkflow,
     goWorkflows,

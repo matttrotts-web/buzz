@@ -155,7 +155,7 @@ _ensure-sidecar-stubs:
     set -euo pipefail
     TARGET=$(rustc -vV | sed -n 's|host: ||p')
     mkdir -p desktop/src-tauri/binaries
-    for bin in buzz-acp buzz-agent buzz-dev-mcp git-credential-nostr buzz; do
+    for bin in buzz-acp buzz-agent buzz-dev-mcp git-credential-nostr buzz buzz-backend-wyzor-hermes; do
         touch "desktop/src-tauri/binaries/${bin}-${TARGET}"
     done
 
@@ -233,13 +233,15 @@ desktop-release-build target="aarch64-apple-darwin":
     #!/usr/bin/env bash
     set -euo pipefail
     TARGET={{target}}
-    mkdir -p desktop/src-tauri/binaries
-    touch "desktop/src-tauri/binaries/buzz-acp-$TARGET"
-    touch "desktop/src-tauri/binaries/buzz-agent-$TARGET"
-    touch "desktop/src-tauri/binaries/buzz-dev-mcp-$TARGET"
-    touch "desktop/src-tauri/binaries/git-credential-nostr-$TARGET"
-    touch "desktop/src-tauri/binaries/buzz-$TARGET"
     pnpm install
+    cargo build --release --target "$TARGET" \
+      -p buzz-acp \
+      -p buzz-agent \
+      -p buzz-dev-mcp \
+      -p git-credential-nostr \
+      -p buzz-cli \
+      -p wyzor-hermes-provider
+    ./scripts/bundle-sidecars.sh "$TARGET"
     cd {{desktop_dir}} && pnpm tauri build --features mesh-llm --target {{target}}
 
 # Run desktop checks suitable for CI / pre-push
@@ -276,6 +278,7 @@ test-unit:
     #!/usr/bin/env bash
     if command -v cargo-nextest &>/dev/null; then
         cargo nextest run -p buzz-core -p buzz-auth --lib
+        cargo nextest run -p buzz-voice --lib
         cargo nextest run -p buzz-cli
         # buzz-db migrator/lint tests: pure SQL-parsing unit tests (no infra).
         # They guard the embedded-migrator invariant (exactly the consolidated

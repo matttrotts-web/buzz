@@ -91,6 +91,7 @@ pub(super) fn build_deploy_payload(
 
     Ok(deploy_payload_json(
         record,
+        super::workspace_owner_hex(state)?,
         crate::relay::effective_agent_relay_url(
             &record.relay_url,
             &relay_ws_url_with_override(state),
@@ -107,6 +108,7 @@ pub(super) fn build_deploy_payload(
 /// completeness is testable without an `AppHandle`.
 pub(super) fn deploy_payload_json(
     record: &ManagedAgentRecord,
+    owner_pubkey: String,
     relay_url: String,
     effective_model: Option<String>,
     effective_provider: Option<String>,
@@ -115,6 +117,8 @@ pub(super) fn deploy_payload_json(
 ) -> serde_json::Value {
     serde_json::json!({
         "name": &record.name,
+        "pubkey": &record.pubkey,
+        "owner_pubkey": owner_pubkey,
         "relay_url": relay_url,
         "private_key_nsec": &record.private_key_nsec,
         "auth_tag": &record.auth_tag,

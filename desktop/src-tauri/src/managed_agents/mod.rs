@@ -36,6 +36,8 @@ pub(crate) mod team_events;
 mod team_repair;
 mod teams;
 mod types;
+#[cfg(test)]
+mod wyzor_tests;
 
 // Shared guard for tests that mutate or read process-global PATH.
 #[cfg(test)]

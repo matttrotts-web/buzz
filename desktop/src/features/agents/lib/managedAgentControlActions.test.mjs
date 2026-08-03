@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  startManagedAgentWithRules,
+  isManagedAgentLive,
   respawnManagedAgentWithRules,
+  startManagedAgentWithRules,
 } from "./managedAgentControlActions.ts";
 
 function agent(overrides = {}) {
@@ -164,5 +165,27 @@ test("test_respawn_onStopped_fires_before_start_resolves", async () => {
     events,
     ["stop", "onStopped", "start"],
     "onStopped must fire after stop resolves and before start is called",
+  );
+});
+
+const providerAgent = {
+  backend: { type: "provider", id: "wyzor-hermes", config: {} },
+  status: "deployed",
+};
+
+test("a prepared provider bundle is not shown live without relay presence", () => {
+  assert.equal(isManagedAgentLive(providerAgent, "offline"), false);
+  assert.equal(isManagedAgentLive(providerAgent, undefined), false);
+});
+
+test("a provider agent is live only while the relay observes it", () => {
+  assert.equal(isManagedAgentLive(providerAgent, "online"), true);
+  assert.equal(isManagedAgentLive(providerAgent, "away"), true);
+});
+
+test("a local running agent remains live without relay presence", () => {
+  assert.equal(
+    isManagedAgentLive({ backend: { type: "local" }, status: "running" }),
+    true,
   );
 });
