@@ -9,8 +9,8 @@ tauri="$repo_root/desktop/src-tauri/tauri.conf.json"
 
 grep -Fq 'buzz-backend-wyzor-hermes' "$bundle"
 grep -Fq 'binaries/buzz-backend-wyzor-hermes' "$tauri"
-grep -Fq 'buzz-backend-wyzor-hermes-${TARGET}.exe' "$ci"
-grep -Fq 'buzz-backend-wyzor-hermes-$TARGET' "$ci"
+grep -Fq 'for bin in buzz-acp buzz-agent buzz-dev-mcp git-credential-nostr buzz buzz-backend-wyzor-hermes; do' "$ci"
+grep -Fq 'touch "desktop/src-tauri/binaries/buzz-backend-wyzor-hermes-$TARGET"' "$ci"
 
 release_builds=$(grep -Ec 'cargo build --release.*-p wyzor-hermes-provider' "$release")
 [[ "$release_builds" -eq 4 ]] || {
